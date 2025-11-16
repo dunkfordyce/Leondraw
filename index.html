@@ -10,75 +10,74 @@
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
-  <div class="app-shell">
-    <canvas id="photoCanvas" aria-label="Captured photo canvas"></canvas>
-    <canvas id="gridCanvas" aria-label="Perspective grid canvas"></canvas>
+  <main>
+    <header class="app-header">
+      <h1>Leondraw</h1>
+      <p class="subtitle">Capture a reference photo, then build custom perspective guides directly on top of it.</p>
+    </header>
 
-    <div class="hud">
-      <button id="takePhotoBtn" class="primary pill" type="button">Take photo</button>
-      <p class="hint">Drag the colored handles to reposition each vanishing point.</p>
-    </div>
+    <section class="panel">
+      <h2>Load a photo</h2>
+      <p class="helper-text">Use your camera or upload an existing image. Everything runs locally in your browser.</p>
+      <label class="file-input">
+        <input type="file" id="photoInput" accept="image/*" capture="environment" />
+        <span>Take or upload a photo</span>
+      </label>
+      <button id="clearImageBtn" class="ghost" type="button">Remove photo</button>
+    </section>
 
-    <div class="corner-menu" id="cornerMenu">
-      <button id="menuToggle" class="menu-toggle" type="button" aria-expanded="false">Grids ▾</button>
-      <div id="menuPanel" class="menu-panel" hidden>
-        <header>
-          <h2>Perspective grids</h2>
-          <p>Toggle, edit, or delete each vanishing-point set. Maximum of three live grids.</p>
-        </header>
-        <div id="gridList" class="grid-list"></div>
-        <button id="addGridBtn" class="ghost" type="button">Add another grid</button>
+    <section class="panel">
+      <h2>Guide tools</h2>
+      <div class="controls-grid">
+        <label class="control">
+          <span>Tool</span>
+          <select id="toolSelect">
+            <option value="line">Single line</option>
+            <option value="grid">Perspective grid</option>
+            <option value="eraser">Eraser</option>
+          </select>
+        </label>
+        <label class="control">
+          <span>Guide color</span>
+          <input type="color" id="colorPicker" value="#ff7b00" />
+        </label>
+        <label class="control" data-tool="line">
+          <span>Line width</span>
+          <input type="range" id="lineWidth" min="1" max="10" step="1" value="3" />
+        </label>
+        <label class="control" data-tool="grid">
+          <span>Grid density</span>
+          <input type="range" id="gridDensity" min="3" max="16" value="8" />
+        </label>
+        <label class="control" data-tool="grid">
+          <span>Depth rings</span>
+          <input type="range" id="depthCount" min="0" max="8" value="3" />
+        </label>
       </div>
-    </div>
-
-    <div id="settingsOverlay" class="settings-overlay" hidden>
-      <div class="settings-dialog" role="dialog" aria-modal="true">
-        <header>
-          <h3 id="settingsTitle">Grid settings</h3>
-          <button id="closeSettingsBtn" class="icon" type="button" aria-label="Close settings">&times;</button>
-        </header>
-        <form id="settingsForm">
-          <label>
-            <span>Name</span>
-            <input type="text" id="gridNameInput" required />
-          </label>
-          <label>
-            <span>Line color</span>
-            <input type="color" id="gridColorInput" />
-          </label>
-          <label>
-            <span>Fan density</span>
-            <input type="range" id="gridDensityInput" min="4" max="48" value="18" />
-          </label>
-          <label>
-            <span>Depth spacing (px)</span>
-            <input type="range" id="gridSpacingInput" min="20" max="200" value="80" />
-          </label>
-          <label>
-            <span>Line thickness</span>
-            <input type="range" id="gridThicknessInput" min="1" max="6" value="2" />
-          </label>
-          <label>
-            <span>Opacity</span>
-            <input type="range" id="gridOpacityInput" min="0.2" max="1" step="0.05" value="0.8" />
-          </label>
-          <div class="dialog-actions">
-            <button type="button" id="cancelSettingsBtn" class="ghost">Cancel</button>
-            <button type="submit" class="primary">Save</button>
-          </div>
-        </form>
+      <div class="actions">
+        <button id="undoBtn" type="button">Undo guide</button>
+        <button id="clearGuidesBtn" class="ghost" type="button">Clear all guides</button>
       </div>
-    </div>
+      <p class="helper-text" id="instructionText">
+        Tap once to set the start of a guide line, then tap again to set the end.
+      </p>
+    </section>
 
-    <div id="cameraOverlay" class="camera-overlay" hidden>
-      <video id="cameraPreview" autoplay playsinline></video>
-      <div class="camera-actions">
-        <button id="captureBtn" class="primary pill" type="button">Capture</button>
-        <button id="closeCameraBtn" class="ghost" type="button">Cancel</button>
-      </div>
-    </div>
-  </div>
+    <section class="canvas-panel">
+      <canvas id="workspace" width="360" height="520" aria-label="Workspace canvas"></canvas>
+    </section>
 
+    <section class="panel info">
+      <h2>How it works</h2>
+      <ol>
+        <li>Load or shoot a photo.</li>
+        <li>Select a tool. The line tool lets you create any guide line. The grid tool asks for a vanishing point and auto-generates perspective fans and depth rings.</li>
+        <li>Drag two fingers to scroll the page if you need to reposition — the guides will stay locked to the image.</li>
+        <li>When you're done, take a screenshot to save the plan for your drawing.</li>
+      </ol>
+      <p class="helper-text">Leondraw runs entirely on GitHub Pages, so nothing ever leaves your device.</p>
+    </section>
+  </main>
   <script src="app.js" type="module"></script>
 </body>
 </html>

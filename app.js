@@ -1,379 +1,263 @@
-const photoCanvas = document.getElementById('photoCanvas');
-const gridCanvas = document.getElementById('gridCanvas');
-const takePhotoBtn = document.getElementById('takePhotoBtn');
-const menuToggle = document.getElementById('menuToggle');
-const menuPanel = document.getElementById('menuPanel');
-const gridListEl = document.getElementById('gridList');
-const addGridBtn = document.getElementById('addGridBtn');
-const settingsOverlay = document.getElementById('settingsOverlay');
-const settingsForm = document.getElementById('settingsForm');
-const settingsTitle = document.getElementById('settingsTitle');
-const nameInput = document.getElementById('gridNameInput');
-const colorInput = document.getElementById('gridColorInput');
-const densityInput = document.getElementById('gridDensityInput');
-const spacingInput = document.getElementById('gridSpacingInput');
-const thicknessInput = document.getElementById('gridThicknessInput');
-const opacityInput = document.getElementById('gridOpacityInput');
-const cancelSettingsBtn = document.getElementById('cancelSettingsBtn');
-const closeSettingsBtn = document.getElementById('closeSettingsBtn');
-const cameraOverlay = document.getElementById('cameraOverlay');
-const cameraPreview = document.getElementById('cameraPreview');
-const captureBtn = document.getElementById('captureBtn');
-const closeCameraBtn = document.getElementById('closeCameraBtn');
-
-const photoCtx = photoCanvas.getContext('2d');
-const gridCtx = gridCanvas.getContext('2d');
-
-const MAX_GRIDS = 3;
-const COLORS = ['#ff7b54', '#50c1ff', '#a6ff4d'];
-
-const createId = () => (window.crypto && window.crypto.randomUUID ? window.crypto.randomUUID() : Math.random().toString(36).slice(2));
+const canvas = document.getElementById('workspace');
+const ctx = canvas.getContext('2d');
+const photoInput = document.getElementById('photoInput');
+const clearImageBtn = document.getElementById('clearImageBtn');
+const toolSelect = document.getElementById('toolSelect');
+const colorPicker = document.getElementById('colorPicker');
+const lineWidthInput = document.getElementById('lineWidth');
+const gridDensityInput = document.getElementById('gridDensity');
+const depthCountInput = document.getElementById('depthCount');
+const instructionText = document.getElementById('instructionText');
+const undoBtn = document.getElementById('undoBtn');
+const clearGuidesBtn = document.getElementById('clearGuidesBtn');
 
 const state = {
-  grids: [],
-  activeHandle: null,
-  editingGridId: null,
-  photoBuffer: null,
-  photoAspect: 1,
-  cameraStream: null,
+  image: null,
+  guides: [],
+  lineStart: null,
+  currentTool: toolSelect.value,
 };
 
-const handleTargets = [];
+const toolMessages = {
+  line: 'Tap once to set the start of a guide line, then tap again to set the end.',
+  grid: 'Tap where you want the vanishing point. A grid will radiate from that spot.',
+  eraser: 'Tap a guide to remove it. Undo works too.',
+};
 
-function sizeCanvas(canvas, ctx) {
-  const width = window.innerWidth;
-  const height = window.innerHeight;
-  const dpr = window.devicePixelRatio || 1;
-  canvas.width = width * dpr;
-  canvas.height = height * dpr;
-  canvas.style.width = `${width}px`;
-  canvas.style.height = `${height}px`;
-  ctx.setTransform(1, 0, 0, 1, 0, 0);
-  ctx.scale(dpr, dpr);
+function resizeCanvasToImage(image) {
+  const maxWidth = Math.min(window.innerWidth - 32, 900);
+  const scale = Math.min(maxWidth / image.width, 1);
+  canvas.width = image.width * scale;
+  canvas.height = image.height * scale;
 }
 
-function resizeAll() {
-  sizeCanvas(photoCanvas, photoCtx);
-  sizeCanvas(gridCanvas, gridCtx);
-  drawPhoto();
-  drawGrids();
-}
+function draw() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  if (state.image) {
+    ctx.drawImage(state.image, 0, 0, canvas.width, canvas.height);
+  } else {
+    const gradient = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
+    gradient.addColorStop(0, '#111225');
+    gradient.addColorStop(1, '#050507');
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = 'rgba(255,255,255,0.45)';
+    ctx.textAlign = 'center';
+    ctx.font = '600 18px "Space Grotesk", sans-serif';
+    ctx.fillText('Upload or shoot a reference image', canvas.width / 2, canvas.height / 2);
+  }
 
-function seedGrids() {
-  if (state.grids.length) return;
-  const width = window.innerWidth;
-  const height = window.innerHeight;
-  const presets = [
-    { name: 'Grid A', color: COLORS[0], enabled: true, point: { x: width * 0.2, y: height * 0.35 } },
-    { name: 'Grid B', color: COLORS[1], enabled: false, point: { x: width * 0.8, y: height * 0.3 } },
-    { name: 'Grid C', color: COLORS[2], enabled: false, point: { x: width * 0.5, y: height * 0.15 } },
-  ];
+  ctx.lineCap = 'round';
 
-  presets.forEach((preset) => addGrid(preset));
-}
+  state.guides.forEach((guide) => {
+    ctx.strokeStyle = guide.color;
+    ctx.lineWidth = guide.width;
 
-function addGrid(config = {}) {
-  if (state.grids.length >= MAX_GRIDS) return;
-  const width = window.innerWidth;
-  const height = window.innerHeight;
-  const grid = {
-    id: createId(),
-    name: config.name || `Grid ${String.fromCharCode(65 + state.grids.length)}`,
-    color: config.color || COLORS[state.grids.length % COLORS.length],
-    enabled: config.enabled ?? true,
-    vanishingPoint: config.point || { x: width / 2, y: height / 3 },
-    density: config.density || 18,
-    spacing: config.spacing || 80,
-    thickness: config.thickness || 2,
-    opacity: config.opacity || 0.85,
-  };
-  state.grids.push(grid);
-  renderGridList();
-  drawGrids();
-}
+    if (guide.type === 'line') {
+      ctx.beginPath();
+      ctx.moveTo(guide.start.x, guide.start.y);
+      ctx.lineTo(guide.end.x, guide.end.y);
+      ctx.stroke();
+    }
 
-function renderGridList() {
-  gridListEl.innerHTML = '';
-  state.grids.forEach((grid) => {
-    const card = document.createElement('div');
-    card.className = `grid-card ${grid.enabled ? 'enabled' : ''}`;
-    const info = document.createElement('div');
-    const title = document.createElement('strong');
-    title.textContent = grid.name;
-    const meta = document.createElement('span');
-    meta.className = 'grid-meta';
-    meta.textContent = `density ${grid.density} • spacing ${grid.spacing}px`;
-    info.append(title, meta);
-
-    const actions = document.createElement('div');
-    actions.className = 'grid-actions';
-
-    const toggleBtn = document.createElement('button');
-    toggleBtn.textContent = grid.enabled ? 'Disable' : 'Enable';
-    toggleBtn.classList.toggle('primary', !grid.enabled);
-    toggleBtn.addEventListener('click', () => {
-      grid.enabled = !grid.enabled;
-      renderGridList();
-      drawGrids();
-    });
-
-    const editBtn = document.createElement('button');
-    editBtn.textContent = 'Settings';
-    editBtn.addEventListener('click', () => openSettings(grid.id));
-
-    const deleteBtn = document.createElement('button');
-    deleteBtn.textContent = 'Delete';
-    deleteBtn.addEventListener('click', () => removeGrid(grid.id));
-
-    actions.append(toggleBtn, editBtn, deleteBtn);
-    card.append(info, actions);
-    gridListEl.append(card);
+    if (guide.type === 'grid') {
+      drawGridGuide(guide);
+    }
   });
 
-  addGridBtn.disabled = state.grids.length >= MAX_GRIDS;
-  addGridBtn.textContent = addGridBtn.disabled ? 'Grid limit reached' : 'Add another grid';
-}
-
-function removeGrid(id) {
-  const idx = state.grids.findIndex((grid) => grid.id === id);
-  if (idx >= 0) {
-    state.grids.splice(idx, 1);
-    renderGridList();
-    drawGrids();
+  if (state.lineStart) {
+    ctx.save();
+    ctx.strokeStyle = 'rgba(255,255,255,0.6)';
+    ctx.setLineDash([6, 6]);
+    ctx.beginPath();
+    ctx.arc(state.lineStart.x, state.lineStart.y, 8, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
   }
 }
 
-function drawPhoto() {
-  const width = window.innerWidth;
-  const height = window.innerHeight;
-  photoCtx.clearRect(0, 0, width, height);
-  if (!state.photoBuffer) {
-    const gradient = photoCtx.createLinearGradient(0, 0, width, height);
-    gradient.addColorStop(0, '#0b0d1b');
-    gradient.addColorStop(1, '#020308');
-    photoCtx.fillStyle = gradient;
-    photoCtx.fillRect(0, 0, width, height);
+function drawGridGuide(guide) {
+  const { point, density, depth, color } = guide;
+  const boundaryY = point.y < canvas.height / 2 ? canvas.height : 0;
+  ctx.save();
+  ctx.strokeStyle = color;
+  ctx.lineWidth = guide.width;
+  ctx.setLineDash([4, 8]);
 
-    photoCtx.fillStyle = 'rgba(255,255,255,0.5)';
-    photoCtx.font = '600 1.2rem "Space Grotesk", sans-serif';
-    photoCtx.textAlign = 'center';
-    photoCtx.fillText('Take a photo to fill the frame', width / 2, height / 2);
-    return;
+  for (let i = 0; i <= density; i += 1) {
+    const t = i / density;
+    const targetX = canvas.width * t;
+    ctx.beginPath();
+    ctx.moveTo(point.x, point.y);
+    ctx.lineTo(targetX, boundaryY);
+    ctx.stroke();
   }
 
-  const { width: imgW, height: imgH } = state.photoBuffer;
-  const scale = Math.max(width / imgW, height / imgH);
-  const drawWidth = imgW * scale;
-  const drawHeight = imgH * scale;
-  const offsetX = (width - drawWidth) / 2;
-  const offsetY = (height - drawHeight) / 2;
-  photoCtx.drawImage(state.photoBuffer, offsetX, offsetY, drawWidth, drawHeight);
-}
-
-function drawGrids() {
-  const width = window.innerWidth;
-  const height = window.innerHeight;
-  gridCtx.clearRect(0, 0, width, height);
-  handleTargets.length = 0;
-
-  state.grids.forEach((grid) => {
-    if (!grid.enabled) return;
-    drawPerspectiveGrid(grid);
-    handleTargets.push({ gridId: grid.id, x: grid.vanishingPoint.x, y: grid.vanishingPoint.y });
-    drawHandle(grid);
-  });
-}
-
-function drawPerspectiveGrid(grid) {
-  const width = window.innerWidth;
-  const height = window.innerHeight;
-  const { vanishingPoint: point, color, density, spacing, thickness, opacity } = grid;
-  const baseY = height;
-
-  gridCtx.save();
-  gridCtx.globalAlpha = opacity;
-  gridCtx.strokeStyle = color;
-  gridCtx.lineWidth = thickness;
-
-  const steps = Math.max(4, density);
-  for (let i = 0; i <= steps; i += 1) {
-    const t = i / steps;
-    const targetX = width * t;
-    gridCtx.beginPath();
-    gridCtx.moveTo(point.x, point.y);
-    gridCtx.lineTo(targetX, baseY);
-    gridCtx.stroke();
+  ctx.setLineDash([]);
+  for (let i = 1; i <= depth; i += 1) {
+    const progress = i / (depth + 1);
+    const y = point.y + (boundaryY - point.y) * progress;
+    const fade = 0.3 + 0.7 * (1 - progress);
+    ctx.strokeStyle = hexToRgba(color, fade);
+    ctx.beginPath();
+    ctx.moveTo(0, y);
+    ctx.lineTo(canvas.width, y);
+    ctx.stroke();
   }
 
-  gridCtx.globalAlpha = opacity * 0.8;
-  const depthLines = Math.floor((baseY - point.y) / spacing);
-  for (let i = 1; i <= depthLines; i += 1) {
-    const y = point.y + i * spacing;
-    gridCtx.beginPath();
-    gridCtx.moveTo(0, y);
-    gridCtx.lineTo(width, y);
-    gridCtx.stroke();
-  }
-
-  gridCtx.restore();
+  ctx.restore();
 }
 
-function drawHandle(grid) {
-  const { x, y } = grid.vanishingPoint;
-  gridCtx.save();
-  gridCtx.fillStyle = grid.color;
-  gridCtx.beginPath();
-  gridCtx.arc(x, y, 10, 0, Math.PI * 2);
-  gridCtx.fill();
-  gridCtx.lineWidth = 2;
-  gridCtx.strokeStyle = 'rgba(0,0,0,0.6)';
-  gridCtx.stroke();
-  gridCtx.restore();
+function hexToRgba(hex, alpha = 1) {
+  const parsed = hex.replace('#', '');
+  const bigint = parseInt(parsed, 16);
+  const r = (bigint >> 16) & 255;
+  const g = (bigint >> 8) & 255;
+  const b = bigint & 255;
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 }
 
 function getCanvasPoint(evt) {
-  const rect = gridCanvas.getBoundingClientRect();
-  const x = ((evt.clientX - rect.left) / rect.width) * window.innerWidth;
-  const y = ((evt.clientY - rect.top) / rect.height) * window.innerHeight;
+  const rect = canvas.getBoundingClientRect();
+  const x = ((evt.clientX - rect.left) / rect.width) * canvas.width;
+  const y = ((evt.clientY - rect.top) / rect.height) * canvas.height;
   return { x, y };
 }
 
-function onPointerDown(evt) {
+function handlePointerDown(evt) {
   const point = getCanvasPoint(evt);
-  const handle = handleTargets.find((target) => Math.hypot(target.x - point.x, target.y - point.y) < 18);
-  if (!handle) return;
-  evt.preventDefault();
-  state.activeHandle = { ...handle, pointerId: evt.pointerId };
-  gridCanvas.setPointerCapture(evt.pointerId);
-}
 
-function onPointerMove(evt) {
-  if (!state.activeHandle) return;
-  const point = getCanvasPoint(evt);
-  const grid = state.grids.find((g) => g.id === state.activeHandle.gridId);
-  if (!grid) return;
-  grid.vanishingPoint.x = Math.max(0, Math.min(window.innerWidth, point.x));
-  grid.vanishingPoint.y = Math.max(0, Math.min(window.innerHeight - 20, point.y));
-  drawGrids();
-}
-
-function onPointerUp(evt) {
-  if (state.activeHandle && state.activeHandle.pointerId === evt.pointerId) {
-    gridCanvas.releasePointerCapture(evt.pointerId);
-    state.activeHandle = null;
-  }
-}
-
-function toggleMenu() {
-  const isOpen = menuPanel.hasAttribute('hidden') ? false : true;
-  if (isOpen) {
-    menuPanel.setAttribute('hidden', '');
-    menuToggle.setAttribute('aria-expanded', 'false');
-  } else {
-    menuPanel.removeAttribute('hidden');
-    menuToggle.setAttribute('aria-expanded', 'true');
-  }
-}
-
-function openSettings(gridId) {
-  const grid = state.grids.find((g) => g.id === gridId);
-  if (!grid) return;
-  state.editingGridId = gridId;
-  settingsTitle.textContent = `${grid.name} settings`;
-  nameInput.value = grid.name;
-  colorInput.value = grid.color;
-  densityInput.value = grid.density;
-  spacingInput.value = grid.spacing;
-  thicknessInput.value = grid.thickness;
-  opacityInput.value = grid.opacity;
-  settingsOverlay.removeAttribute('hidden');
-}
-
-function closeSettings() {
-  state.editingGridId = null;
-  settingsOverlay.setAttribute('hidden', '');
-}
-
-function applySettings(evt) {
-  evt.preventDefault();
-  const grid = state.grids.find((g) => g.id === state.editingGridId);
-  if (!grid) return;
-  grid.name = nameInput.value.trim() || grid.name;
-  grid.color = colorInput.value;
-  grid.density = Number(densityInput.value);
-  grid.spacing = Number(spacingInput.value);
-  grid.thickness = Number(thicknessInput.value);
-  grid.opacity = Number(opacityInput.value);
-  renderGridList();
-  drawGrids();
-  closeSettings();
-}
-
-async function openCamera() {
-  try {
-    const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
-    state.cameraStream = stream;
-    cameraPreview.srcObject = stream;
-    cameraOverlay.removeAttribute('hidden');
-  } catch (err) {
-    alert('Unable to access camera. Please allow camera permissions.');
-  }
-}
-
-function stopCamera() {
-  if (state.cameraStream) {
-    state.cameraStream.getTracks().forEach((track) => track.stop());
-    state.cameraStream = null;
-  }
-  cameraOverlay.setAttribute('hidden', '');
-}
-
-function capturePhoto() {
-  if (!state.cameraStream) return;
-  const buffer = document.createElement('canvas');
-  buffer.width = cameraPreview.videoWidth || 1080;
-  buffer.height = cameraPreview.videoHeight || 1440;
-  const bufferCtx = buffer.getContext('2d');
-  bufferCtx.drawImage(cameraPreview, 0, 0, buffer.width, buffer.height);
-  state.photoBuffer = buffer;
-  drawPhoto();
-  stopCamera();
-}
-
-function handleKeydown(evt) {
-  if (evt.key === 'Escape') {
-    if (!settingsOverlay.hasAttribute('hidden')) {
-      closeSettings();
+  if (state.currentTool === 'line') {
+    if (!state.lineStart) {
+      state.lineStart = point;
+    } else {
+      state.guides.push({
+        type: 'line',
+        start: state.lineStart,
+        end: point,
+        color: colorPicker.value,
+        width: Number(lineWidthInput.value),
+      });
+      state.lineStart = null;
     }
-    if (!cameraOverlay.hasAttribute('hidden')) {
-      stopCamera();
+  }
+
+  if (state.currentTool === 'grid') {
+    state.guides.push({
+      type: 'grid',
+      point,
+      density: Number(gridDensityInput.value),
+      depth: Number(depthCountInput.value),
+      color: colorPicker.value,
+      width: 1.5,
+    });
+  }
+
+  if (state.currentTool === 'eraser') {
+    removeGuideAtPoint(point);
+  }
+
+  draw();
+}
+
+function removeGuideAtPoint(point) {
+  const radius = 20;
+  for (let i = state.guides.length - 1; i >= 0; i -= 1) {
+    const guide = state.guides[i];
+    if (guide.type === 'line') {
+      if (distanceToSegment(point, guide.start, guide.end) < radius) {
+        state.guides.splice(i, 1);
+        break;
+      }
+    }
+    if (guide.type === 'grid') {
+      const dx = guide.point.x - point.x;
+      const dy = guide.point.y - point.y;
+      if (Math.hypot(dx, dy) < radius * 1.5) {
+        state.guides.splice(i, 1);
+        break;
+      }
     }
   }
 }
 
-window.addEventListener('resize', resizeAll);
-gridCanvas.addEventListener('pointerdown', onPointerDown);
-gridCanvas.addEventListener('pointermove', onPointerMove);
-gridCanvas.addEventListener('pointerup', onPointerUp);
-gridCanvas.addEventListener('pointercancel', onPointerUp);
-takePhotoBtn.addEventListener('click', openCamera);
-menuToggle.addEventListener('click', toggleMenu);
-addGridBtn.addEventListener('click', () => addGrid({ enabled: true }));
-settingsForm.addEventListener('submit', applySettings);
-cancelSettingsBtn.addEventListener('click', closeSettings);
-closeSettingsBtn.addEventListener('click', closeSettings);
-captureBtn.addEventListener('click', capturePhoto);
-closeCameraBtn.addEventListener('click', stopCamera);
-window.addEventListener('keydown', handleKeydown);
+function distanceToSegment(point, start, end) {
+  const dx = end.x - start.x;
+  const dy = end.y - start.y;
+  if (dx === 0 && dy === 0) return Math.hypot(point.x - start.x, point.y - start.y);
+  const t = ((point.x - start.x) * dx + (point.y - start.y) * dy) / (dx * dx + dy * dy);
+  const clamped = Math.max(0, Math.min(1, t));
+  const projX = start.x + clamped * dx;
+  const projY = start.y + clamped * dy;
+  return Math.hypot(point.x - projX, point.y - projY);
+}
 
-document.addEventListener('click', (evt) => {
-  if (!menuPanel.contains(evt.target) && evt.target !== menuToggle) {
-    menuPanel.setAttribute('hidden', '');
-    menuToggle.setAttribute('aria-expanded', 'false');
-  }
+function handleImage(file) {
+  if (!file) return;
+  const img = new Image();
+  img.onload = () => {
+    state.image = img;
+    resizeCanvasToImage(img);
+    draw();
+  };
+  img.src = URL.createObjectURL(file);
+}
+
+photoInput.addEventListener('change', (evt) => {
+  const [file] = evt.target.files;
+  handleImage(file);
 });
 
-resizeAll();
-seedGrids();
-renderGridList();
-drawGrids();
+clearImageBtn.addEventListener('click', () => {
+  state.image = null;
+  state.guides = [];
+  state.lineStart = null;
+  photoInput.value = '';
+  draw();
+});
+
+undoBtn.addEventListener('click', () => {
+  if (state.lineStart) {
+    state.lineStart = null;
+  } else {
+    state.guides.pop();
+  }
+  draw();
+});
+
+clearGuidesBtn.addEventListener('click', () => {
+  state.guides = [];
+  state.lineStart = null;
+  draw();
+});
+
+toolSelect.addEventListener('change', (evt) => {
+  state.currentTool = evt.target.value;
+  state.lineStart = null;
+  updateToolUI();
+  draw();
+});
+
+function updateToolUI() {
+  instructionText.textContent = toolMessages[state.currentTool];
+  document.querySelectorAll('[data-tool]').forEach((el) => {
+    el.style.display = el.dataset.tool === state.currentTool ? 'flex' : 'none';
+  });
+}
+
+canvas.addEventListener('pointerdown', (evt) => {
+  evt.preventDefault();
+  canvas.setPointerCapture(evt.pointerId);
+  handlePointerDown(evt);
+});
+
+window.addEventListener('resize', () => {
+  if (!state.image) return;
+  resizeCanvasToImage(state.image);
+  draw();
+});
+
+// initial paint
+resizeCanvasToImage({ width: canvas.width, height: canvas.height });
+updateToolUI();
+draw();
