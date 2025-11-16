@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Leondraw Perspective Helper</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <main>
+    <header class="app-header">
+      <h1>Leondraw</h1>
+      <p class="subtitle">Capture a reference photo, then build custom perspective guides directly on top of it.</p>
+    </header>
+
+    <section class="panel">
+      <h2>Load a photo</h2>
+      <p class="helper-text">Use your camera or upload an existing image. Everything runs locally in your browser.</p>
+      <label class="file-input">
+        <input type="file" id="photoInput" accept="image/*" capture="environment" />
+        <span>Take or upload a photo</span>
+      </label>
+      <button id="clearImageBtn" class="ghost" type="button">Remove photo</button>
+    </section>
+
+    <section class="panel">
+      <h2>Guide tools</h2>
+      <div class="controls-grid">
+        <label class="control">
+          <span>Tool</span>
+          <select id="toolSelect">
+            <option value="line">Single line</option>
+            <option value="grid">Perspective grid</option>
+            <option value="eraser">Eraser</option>
+          </select>
+        </label>
+        <label class="control">
+          <span>Guide color</span>
+          <input type="color" id="colorPicker" value="#ff7b00" />
+        </label>
+        <label class="control" data-tool="line">
+          <span>Line width</span>
+          <input type="range" id="lineWidth" min="1" max="10" step="1" value="3" />
+        </label>
+        <label class="control" data-tool="grid">
+          <span>Grid density</span>
+          <input type="range" id="gridDensity" min="3" max="16" value="8" />
+        </label>
+        <label class="control" data-tool="grid">
+          <span>Depth rings</span>
+          <input type="range" id="depthCount" min="0" max="8" value="3" />
+        </label>
+      </div>
+      <div class="actions">
+        <button id="undoBtn" type="button">Undo guide</button>
+        <button id="clearGuidesBtn" class="ghost" type="button">Clear all guides</button>
+      </div>
+      <p class="helper-text" id="instructionText">
+        Tap once to set the start of a guide line, then tap again to set the end.
+      </p>
+    </section>
+
+    <section class="canvas-panel">
+      <canvas id="workspace" width="360" height="520" aria-label="Workspace canvas"></canvas>
+    </section>
+
+    <section class="panel info">
+      <h2>How it works</h2>
+      <ol>
+        <li>Load or shoot a photo.</li>
+        <li>Select a tool. The line tool lets you create any guide line. The grid tool asks for a vanishing point and auto-generates perspective fans and depth rings.</li>
+        <li>Drag two fingers to scroll the page if you need to reposition — the guides will stay locked to the image.</li>
+        <li>When you're done, take a screenshot to save the plan for your drawing.</li>
+      </ol>
+      <p class="helper-text">Leondraw runs entirely on GitHub Pages, so nothing ever leaves your device.</p>
+    </section>
+  </main>
+  <script src="app.js" type="module"></script>
+</body>
+</html>
